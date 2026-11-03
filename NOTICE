@@ -1,0 +1,11 @@
+Exoz Client
+Copyright 2026 Exoz
+
+This product is a modified version of LeviLaunchroid, Copyright (c) LeviMC (https://github.com/LiteLDev/LeviLaunchroid),
+licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Changes made by Exoz (summary):
+- Rebranded (application id, name, colours, icon, About text).
+- Disabled upstream update checks and the upstream news feed; disabled Firebase collection.
+- Added the Exoz core native mod (app/src/main/cpp/exozmod) and its installer (ExozBundledMod.java).
+- Added a CI workflow that builds a debug APK.

@@ -1,0 +1,81 @@
+name: Exoz Client APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      # Uploading a ZIP (instead of forking) loses submodules: fetch any that are empty.
+      - name: Make sure native dependencies exist
+        run: |
+          git config -f .gitmodules --get-regexp '^submodule\..*\.path$' | while read -r key path; do
+            name="${key#submodule.}"; name="${name%.path}"
+            url="$(git config -f .gitmodules --get "submodule.${name}.url")"
+            if [ -z "$(ls -A "$path" 2>/dev/null)" ]; then
+              echo "fetching $path from $url"
+              rm -rf "$path"
+              git clone --depth 1 --recursive "$url" "$path"
+            fi
+          done
+          test -f app/src/main/cpp/preloader/include/pl/Config.hpp
+
+      # CodeAssist needs `package=` in manifests; AGP 8 wants `namespace` only. Strip it for the CI build.
+      - name: Strip manifest package attributes for AGP
+        run: |
+          for f in app/src/main/AndroidManifest.xml minecraft/src/main/AndroidManifest.xml pojav_controls/src/main/AndroidManifest.xml; do
+            sed -i -E 's/ package="[^"]*"//' "$f"
+          done
+
+      # Placeholder Firebase config so the Gradle plugin is satisfied. Crash/analytics collection is
+      # disabled in the manifest, so nothing is sent anywhere.
+      - name: Placeholder google-services.json
+        run: |
+          cat > app/google-services.json <<'JSON'
+          {
+            "project_info": { "project_number": "000000000000", "project_id": "exoz-client", "storage_bucket": "exoz-client.appspot.com" },
+            "client": [{
+              "client_info": { "mobilesdk_app_id": "1:000000000000:android:0000000000000000", "android_client_info": { "package_name": "com.exoz.client" } },
+              "api_key": [{ "current_key": "placeholder-key" }]
+            }],
+            "configuration_version": "1"
+          }
+          JSON
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: "2.9.9"
+
+      - uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r28c
+
+      - name: Host tests for the Exoz native logic
+        run: |
+          cd app/src/main/cpp/exozmod
+          g++ -std=c++20 -Isrc src/hud/FrameTimeline.cpp src/hud/HudLayout.cpp tests/test_hud.cpp -o /tmp/test_hud && /tmp/test_hud
+
+      - name: Build debug APK
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ExozClient-debug
+          path: app/build/outputs/apk/debug/*.apk
